@@ -91,7 +91,12 @@ let package = Package(
         .testTarget(name: "AetherASSTests", dependencies: ["AetherASS"]),
         .target(name: "AetherASS", dependencies: [
             .product(name: "libass", package: "libass-build"),
-        ], exclude: ["README.md"]),
+        ], exclude: ["README.md"], linkerSettings: [
+            // Required by the static libass/FreeType artifacts, independently
+            // of any playback-core or host application's transitive linkage.
+            .linkedLibrary("iconv"),
+            .linkedLibrary("z"),
+        ]),
         .target(
             name: "AetherEngine",
             dependencies: [

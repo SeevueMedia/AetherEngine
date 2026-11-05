@@ -877,6 +877,13 @@ suppressing `AVPlayerItemLegibleOutput` to keep the measurement running.
 
 ## Subtitles
 
+The optional `AetherASS` product provides `ASSRenderer` for authored ASS/SSA
+painting with host-supplied fonts. It is independent of the playback core and
+performs no networking or global font registration. See its
+`Sources/AetherASS/README.md` for ownership, limits,
+`replaceFonts`, `load(script:)`, `render(at:width:height:forceRedraw:)` and the
+simulator test command.
+
 | Symbol | Notes |
 | --- | --- |
 | `$subtitleTracks` | `[TrackInfo]`: embedded text, embedded bitmap, external files and a live channel's HLS renditions in one list. |
