@@ -10,6 +10,11 @@ import Foundation
 /// data. The host answers per origin, and while no evaluator is set every
 /// challenge keeps the system's default handling.
 public enum EngineTLS {
+    /// Native AVFoundation requests cannot consult the host evaluator.
+    static func requiresOwnedTransport(_ url: URL) -> Bool {
+        serverTrustEvaluator != nil && url.scheme?.lowercased() == "https"
+    }
+
 
     /// Authoritatively decides whether to accept a server certificate for the
     /// origin the challenge came from. A false answer cancels authentication,

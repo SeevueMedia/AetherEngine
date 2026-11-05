@@ -107,6 +107,7 @@ public final class AetherScrubPreviewView: PlatformBaseView {
     /// Shows the one-keyframe file at `url`. False when a newer request superseded this one, or the
     /// item did not become displayable within two seconds; the previous picture stays up then.
     func present(_ url: URL) async -> Bool {
+        guard !EngineTLS.requiresOwnedTransport(url) else { return false }
         if url == shownURL { return true }
         request &+= 1
         let mine = request

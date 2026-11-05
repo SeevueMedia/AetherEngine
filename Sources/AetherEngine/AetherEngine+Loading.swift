@@ -579,8 +579,12 @@ extension AetherEngine {
         // AE#495: a host that answered the trust evaluator needs the media on a session the engine
         // owns, and the same stand-in does that. With sidecars it mounts a relay behind the
         // rewritten master, without them the relay stands alone.
-        let playbackURL = await prepareRemoteHLSStandIn(
-            originURL: url, options: options, expectedGeneration: bypassGeneration) ?? url
+        let standInURL = await prepareRemoteHLSStandIn(
+            originURL: url, options: options, expectedGeneration: bypassGeneration)
+        guard !EngineTLS.requiresOwnedTransport(url) || standInURL != nil else {
+            throw URLError(.serverCertificateUntrusted)
+        }
+        let playbackURL = standInURL ?? url
         // With a relay in front, the item AVPlayer fails is a loopback 502 and the refused handshake
         // happened out of its sight, so the classification has to be able to ask the side that made it.
         if let relay = remoteHLSSubtitleProxy?.server.relay {
@@ -707,9 +711,9 @@ extension AetherEngine {
                 .map { RemoteHLSSubtitleProvider.Track(externalID: $0.key, source: $0.value) }
         // Nothing to stand in for, so the origin is never asked.
         guard !tracks.isEmpty || mayNeedRelay else { return nil }
+        // AVPlayer exposes no trust challenge. System trust must not bypass an
+        // installed host policy, so every HTTPS origin uses the owned relay.
         let needsRelay = mayNeedRelay
-            ? await HLSOriginRelay.systemTrustRefuses(originURL, headers: options.httpHeaders)
-            : false
         guard !options.isLive || needsRelay else { return nil }
         guard !tracks.isEmpty || needsRelay else { return nil }
 

@@ -122,6 +122,7 @@ final class AudioAVPlayerHost {
     // MARK: - Load
 
     func load(url: URL, startPosition: Double?, httpHeaders: [String: String]) async throws {
+        guard !EngineTLS.requiresOwnedTransport(url) else { throw URLError(.serverCertificateUntrusted) }
         // Clean prior observers before swapping in a new item so a back-to-back load() doesn't leak or double-fire.
         teardownObservers()
 

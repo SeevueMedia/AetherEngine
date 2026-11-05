@@ -555,6 +555,12 @@ final class NativeAVPlayerHost {
     func load(url: URL, startPosition: Double?, perFrameHDR: Bool = true, skipInitialSeek: Bool = false,
               inPlaceSwap: Bool = false, diagnosticContext: SourceNetworkDiagnostics.Context? = nil,
               contract: SessionLoadContract) {
+        // HTTPS must first be mounted on an engine-owned relay. Never let a
+        // new direct native path accidentally bypass the host's trust policy.
+        guard !EngineTLS.requiresOwnedTransport(url) else {
+            unloadCurrentItem(inPlaceSwap: false)
+            return
+        }
         let outgoingDiagnostics = inPlaceSwap ? itemDiagnostics : nil
         unloadCurrentItem(inPlaceSwap: inPlaceSwap)
 
