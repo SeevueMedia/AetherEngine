@@ -12,8 +12,9 @@ a full ASS/SSA script (`ASSScriptBuilder` can assemble engine cues). Paint copie
 so external delivery and eviction require no global CoreText registration. Hosts
 own font fetching, fallback coverage, caching, cancellation and scheduling.
 
-The source remains under the repository LGPL. `swift-libass` 1.4.0 is an MIT
-wrapper with Apple simulator/device slices; it contains libass 0.17.3 (ISC),
-FreeType, HarfBuzz, FriBidi, Fontconfig and libpng under their respective licences.
-See its pinned source/build recipes and the upstream projects for notices and
-relinking obligations. No GPL FFmpeg filters or network client are introduced.
+The source remains under the repository LGPL. `mpvkit/libass-build` is pinned to
+its 0.17.5 commit, with checksum-verified Apple XCFrameworks. That release includes
+libass's CVE-2026-61626 and CVE-2026-61627 fixes. It provides libass (ISC), FreeType,
+HarfBuzz, FriBidi and libunibreak under their respective licences. Source and build
+recipes are public in the pinned package; consumers retain the corresponding
+notices and relinking obligations. No FFmpeg filters or network client are added.

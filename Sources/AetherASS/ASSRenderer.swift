@@ -1,7 +1,7 @@
 import CoreGraphics
 import CoreText
 import Foundation
-import SwiftLibass
+import Libass
 
 /// An optional libass host overlay. Confine an instance to one serial executor.
 /// It owns every C handle and returns copied images; no libass pointer escapes.

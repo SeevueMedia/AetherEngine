@@ -55,7 +55,7 @@ let package = Package(
     ],
     dependencies: [
         // libass plus its font/shaping stack, Apple XCFrameworks (including simulators).
-        .package(url: "https://github.com/mihai8804858/swift-libass", exact: "1.4.0"),
+        .package(url: "https://github.com/mpvkit/libass-build", revision: "e08eb5bb3be5137e845f781dc9477d1843f23261"),
         // Minimal FFmpeg build (avcodec, avformat, avutil, swresample only).
         // No network stack, we use custom AVIO + URLSession for HTTP streams.
         // Resolved over Git rather than a local path so consumers (and
@@ -90,7 +90,7 @@ let package = Package(
     targets: [
         .testTarget(name: "AetherASSTests", dependencies: ["AetherASS"]),
         .target(name: "AetherASS", dependencies: [
-            .product(name: "SwiftLibass", package: "swift-libass"),
+            .product(name: "libass", package: "libass-build"),
         ], exclude: ["README.md"]),
         .target(
             name: "AetherEngine",
