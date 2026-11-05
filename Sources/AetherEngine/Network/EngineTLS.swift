@@ -11,8 +11,9 @@ import Foundation
 /// challenge keeps the system's default handling.
 public enum EngineTLS {
 
-    /// Decides whether to accept a server certificate that failed system
-    /// trust evaluation, for the origin the challenge came from.
+    /// Authoritatively decides whether to accept a server certificate for the
+    /// origin the challenge came from. A false answer cancels authentication,
+    /// including for a certificate the system would otherwise trust.
     ///
     /// nil, the default, keeps the system's default handling everywhere. The
     /// blunt answer is one line (`{ _ in true }`), and a host holding a LAN
@@ -53,10 +54,13 @@ public enum EngineTLS {
             challenge.protectionSpace.authenticationMethod
                 == NSURLAuthenticationMethodServerTrust,
             let evaluator = serverTrustEvaluator,
-            evaluator(challenge.protectionSpace),
             let trust = challenge.protectionSpace.serverTrust
         else {
             completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        guard evaluator(challenge.protectionSpace) else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
         completionHandler(.useCredential, URLCredential(trust: trust))
