@@ -15,11 +15,7 @@ let package = Package(
         .library(name: "AetherASS", targets: ["AetherASS"]),
         .library(
             name: "AetherEngine",
-            targets: [
-        .testTarget(name: "AetherASSTests", dependencies: ["AetherASS"]),
-        .target(name: "AetherASS", dependencies: [
-            .product(name: "SwiftLibass", package: "swift-libass"),
-        ], exclude: ["README.md"]),"AetherEngine"]
+            targets: ["AetherEngine"]
         ),
         .library(
             name: "AetherEngineSMB",
@@ -92,6 +88,10 @@ let package = Package(
         .package(url: "https://github.com/superuser404notfound/LibTrueHD", .upToNextMinor(from: "3.1.0")),  // 3.1.0: the shipped binary decodes exactly again, matrix interpolation included (the object renderer needs it, #731); same API 2; 3.0.0: API 2, the bed companion (the channel presentation decoded with the object presentation) and a per-handle interpolation switch; the interpolating decode an opt-in build feature, off in that binary (#731); 2.3.1: truehd_atmos_version_string() names the truehd commit actually built in (read from Cargo.lock, LibTrueHD#2), same decoder; 2.3.0: decodes about a third faster again (harletty's truehd speed work: blocks decoded in place, table-driven Huffman, vectorised prediction filters, whole-block matrices; truehdd#42 included), byte-identical output; 2.2.1: rust_eh_personality exported weak, so it coalesces with LibDovi's copy and a host with its own Objective-C and C++ stays within compact unwind's three personality routines (#752); same decoder; 2.2.0: decodes about 30% faster (the truehd crate with its block and PCM buffers sized to the samples they hold, truehdd#42, from a fork of upstream main until that is merged), byte-identical output; 2.1.0: x86_64 in the iOS simulator slice, so a generic iOS Simulator build of a host links; same decoder; 2.0.0: transferred from Silo-Server/SiloObjectAudio and renamed (product TrueHD), rebuilt from source; same decoder as SiloObjectAudio 1.0.0
     ],
     targets: [
+        .testTarget(name: "AetherASSTests", dependencies: ["AetherASS"]),
+        .target(name: "AetherASS", dependencies: [
+            .product(name: "SwiftLibass", package: "swift-libass"),
+        ], exclude: ["README.md"]),
         .target(
             name: "AetherEngine",
             dependencies: [
