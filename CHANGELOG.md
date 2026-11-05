@@ -10,7 +10,12 @@ the public-API contract.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Optional authored ASS rendering with host-supplied fonts.** The `AetherASS` product
+  uses libass without adding a renderer to the playback core. Hosts supply bounded fonts
+  and scripts, render on their serial queue and source clock, and can force a fresh image
+  after clearing their destination even when the subtitle pixels have not changed.
 
 ## [7.56.0] - 2026-11-03
 
