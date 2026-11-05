@@ -11,9 +11,15 @@ let package = Package(
         .visionOS(.v1),
     ],
     products: [
+        // Opt-in host overlay; the playback core remains independent of libass.
+        .library(name: "AetherASS", targets: ["AetherASS"]),
         .library(
             name: "AetherEngine",
-            targets: ["AetherEngine"]
+            targets: [
+        .testTarget(name: "AetherASSTests", dependencies: ["AetherASS"]),
+        .target(name: "AetherASS", dependencies: [
+            .product(name: "SwiftLibass", package: "swift-libass"),
+        ], exclude: ["README.md"]),"AetherEngine"]
         ),
         .library(
             name: "AetherEngineSMB",
@@ -52,6 +58,8 @@ let package = Package(
         .default(enabledTraits: []),
     ],
     dependencies: [
+        // libass plus its font/shaping stack, Apple XCFrameworks (including simulators).
+        .package(url: "https://github.com/mihai8804858/swift-libass", exact: "1.4.0"),
         // Minimal FFmpeg build (avcodec, avformat, avutil, swresample only).
         // No network stack, we use custom AVIO + URLSession for HTTP streams.
         // Resolved over Git rather than a local path so consumers (and
