@@ -20,4 +20,20 @@ final class ASSRendererTests: XCTestCase {
         XCTAssertThrowsError(try renderer.render(at: .nan, width: 320, height: 180))
         XCTAssertThrowsError(try renderer.render(at: 0, width: 8192, height: 8192))
     }
+
+    func testRedrawAfterClearingDestinationAndFontReplacement() throws {
+        let renderer = try ASSRenderer(limits: .init(fontBytes: 1 << 20, scriptBytes: 1 << 20, bitmapMegabytes: 4))
+        try renderer.replaceFonts([.init(name: "synthetic.ttf", data: SubtitleFixture.font)])
+        try renderer.load(script: SubtitleFixture.script.replacingOccurrences(of: "\\kf200", with: ""))
+        let first = try XCTUnwrap(try renderer.render(at: 1.5, width: 320, height: 180).image)
+        XCTAssertFalse(try renderer.render(at: 1.6, width: 320, height: 180).changed)
+        let restored = try renderer.render(at: 1.7, width: 320, height: 180, forceRedraw: true)
+        XCTAssertTrue(restored.changed)
+        XCTAssertEqual(first.dataProvider?.data as Data?, restored.image?.dataProvider?.data as Data?)
+        // The library owns its font bytes, and replacing the set drops its old
+        // faces/caches while retaining the script on the new library.
+        try renderer.replaceFonts([])
+        let fallback = try XCTUnwrap(try renderer.render(at: 1.7, width: 320, height: 180).image)
+        XCTAssertNotEqual(first.dataProvider?.data as Data?, fallback.dataProvider?.data as Data?)
+    }
 }

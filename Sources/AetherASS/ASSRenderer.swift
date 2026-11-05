@@ -116,7 +116,9 @@ public final class ASSRenderer {
     /// Render on the source timeline (seconds), independently of HLS item offsets.
     /// Geometry is in output pixels. Hard safety bounds prevent hostile canvases
     /// and timestamps from overflowing C conversions or image allocations.
-    public func render(at seconds: Double, width: Int, height: Int) throws -> Frame {
+    /// Set `forceRedraw` after the host clears or replaces its destination, even
+    /// if libass's pixels have not changed (for example a seek within one cue).
+    public func render(at seconds: Double, width: Int, height: Int, forceRedraw: Bool = false) throws -> Frame {
         guard seconds.isFinite, seconds >= 0, seconds <= 4_000_000_000,
               width > 0, height > 0, width <= 8192, height <= 8192,
               width * height <= 16_777_216 else { throw Failure.limit }
@@ -124,7 +126,7 @@ public final class ASSRenderer {
         ass_set_frame_size(renderer, Int32(width), Int32(height))
         var changed: Int32 = 0
         let first = ass_render_frame(renderer, track, Int64(seconds * 1000), &changed)
-        let didChange = changed != 0 || forceChange
+        let didChange = changed != 0 || forceChange || forceRedraw
         forceChange = false
         guard didChange else { return Frame(image: nil, changed: false) }
         guard let first else { return Frame(image: nil, changed: true) }
