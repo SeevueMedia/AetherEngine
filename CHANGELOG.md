@@ -22,7 +22,9 @@ the public-API contract.
 - **Native subtitle selection builds with Swift 6.4 concurrency checking.** Its
   checkpoint and callbacks now preserve MainActor isolation across load, cue
   preparation and retry waits, so non-Sendable AVKit selection values stay with
-  their owner. Cancellation and supersession keep their existing generation fences.
+  their owner. The production optional loader explicitly names its result type
+  so the current compiler resolves generic callbacks after early nil returns.
+  Cancellation and supersession keep their existing generation fences.
 
 ## [7.56.0] - 2026-11-03
 

@@ -2327,7 +2327,7 @@ extension AetherEngine {
         nativeSubtitleSelectionOperation.replace(
             selects: ordinal != nil,
             isCurrentItem: { [weak self] in self?.currentAVPlayer?.currentItem === item },
-            load: { [self] in
+            load: { [self] () async throws -> NativeSubtitleChoice? in
                 // #15: with automatic media-selection criteria on (the default), AVKit can override/not-render an
                 // explicit legible selection until a view refresh. Pin manual selection so the explicit choice
                 // renders immediately and survives.
