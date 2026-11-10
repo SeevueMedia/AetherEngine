@@ -418,7 +418,8 @@ Native subtitle rendition selection is owned by `NativeSubtitleSelectionOperatio
 Its checkpoint and all callbacks are MainActor-isolated, including asynchronous
 load, cue preparation and retry waits. AVKit selection references stay on that
 actor, and each resumed operation rechecks its request and player-item generation
-before changing the selection.
+before changing the selection. Its multi-statement loader explicitly names the
+optional selection result type so Swift 6 resolves callbacks after early nil exits.
 
 ## Blocking work and the cooperative pool
 

@@ -182,3 +182,29 @@ extension NativeSubtitleSelectionOperationTests {
         XCTAssertEqual(callbacks, ["load", "prefill", "deselect", "select", "retry", "wait"])
     }
 }
+
+
+extension NativeSubtitleSelectionOperationTests {
+    /// Match the production multi-statement loader: early nil branches must
+    /// still infer the non-Sendable selection passed through MainActor callbacks.
+    @MainActor func testOptionalReferenceLoadAndRecoverySV492() async {
+        let owner = NativeSubtitleSelectionOperation()
+        defer { owner.cancel() }
+        var selected: ReferenceSelection?
+        for available in [false, true] {
+            let expected = ReferenceSelection()
+            let task = owner.replace(
+                selects: true, isCurrentItem: { true },
+                load: { () async throws -> ReferenceSelection? in
+                    guard available else { return nil }
+                    await Task.yield()
+                    return expected
+                },
+                prefill: { _, _ in true }, deselect: { _ in },
+                select: { selected = $0 }, needsRetry: { _ in false }, wait: { _ in })
+            await task.value
+            if available { XCTAssertTrue(selected === expected) }
+            else { XCTAssertNil(selected) }
+        }
+    }
+}
