@@ -4,15 +4,16 @@ import Foundation
 /// belong to the newest request and the same player item, including A→B→A.
 @MainActor
 final class NativeSubtitleSelectionOperation {
+    @MainActor
     struct Checkpoint {
-        let isCurrent: () -> Bool
+        let isCurrent: @MainActor () -> Bool
 
         func check() throws {
             try Task.checkCancellation()
             guard isCurrent() else { throw CancellationError() }
         }
 
-        func wait<T>(_ work: () async throws -> T) async throws -> T {
+        func wait<T>(_ work: @MainActor () async throws -> T) async throws -> T {
             try check()
             let result = try await work()
             try check()
@@ -32,13 +33,13 @@ final class NativeSubtitleSelectionOperation {
     @discardableResult
     func replace<Selection>(
         selects: Bool,
-        isCurrentItem: @escaping () -> Bool,
-        load: @escaping () async throws -> Selection?,
-        prefill: @escaping (Selection, Checkpoint) async throws -> Bool,
-        deselect: @escaping (Selection) -> Void,
-        select: @escaping (Selection) -> Void,
-        needsRetry: @escaping (Selection) -> Bool,
-        wait: @escaping (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
+        isCurrentItem: @escaping @MainActor () -> Bool,
+        load: @escaping @MainActor () async throws -> Selection?,
+        prefill: @escaping @MainActor (Selection, Checkpoint) async throws -> Bool,
+        deselect: @escaping @MainActor (Selection) -> Void,
+        select: @escaping @MainActor (Selection) -> Void,
+        needsRetry: @escaping @MainActor (Selection) -> Bool,
+        wait: @escaping @MainActor (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
     ) -> Task<Void, Never> {
         cancel()
         let requested = generation
