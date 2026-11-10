@@ -136,7 +136,7 @@ extension AetherEngine {
         while true {
             if store.isFinished { return "finished" }
             if subtitleOCRCoversNativeWindow(ordinal: ordinal) { return "covered" }
-            guard nativeSubtitleReapplyOrdinal == ordinal, currentAVPlayer?.currentItem === item
+            guard !Task.isCancelled, nativeSubtitleReapplyOrdinal == ordinal, currentAVPlayer?.currentItem === item
             else { return "superseded" }
             if !reported, Date() >= reportAt {
                 reported = true

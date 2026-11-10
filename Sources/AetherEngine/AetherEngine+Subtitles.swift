@@ -2308,6 +2308,7 @@ extension AetherEngine {
 
     /// Select or deselect the native mov_text track by ordinal (#55). nil deselects all. Matches by `extendedLanguageTag` first (language-rank-aware for same-language duplicates), falls back to positional index. No-op when no legible group or ordinal out of range.
     public func setNativeSubtitleSelected(track ordinal: Int?) {
+        nativeSubtitleSelectionOperation.cancel()
         // Remembered before any guard: the #93 recovery reload replays the host's last request
         // onto the fresh item even when this call raced a not-yet-current player.
         nativeSubtitleReapplyOrdinal = ordinal
@@ -2323,138 +2324,130 @@ extension AetherEngine {
         guard let item = currentAVPlayer?.currentItem else { return }
         // Capture track list; avoid capturing self to keep MainActor re-entrancy to one hop.
         let tracks = nativeSubtitleTracks
-        Task { @MainActor in
-            // #15: with automatic media-selection criteria on (the default), AVKit can override/not-render an
-            // explicit legible selection until a view refresh. Pin manual selection so the explicit choice
-            // renders immediately and survives.
-            currentAVPlayer?.appliesMediaSelectionCriteriaAutomatically = false
-            guard let group = try? await item.asset.loadMediaSelectionGroup(for: .legible) else { return }
-            guard !group.options.isEmpty else { return }
-            guard let ordinal else {
-                item.select(nil, in: group)
-                return
-            }
-            // Rank-based selection through the ISO-synonym matcher: AVFoundation normalizes HLS
-            // LANGUAGE tags (matroska "ger" reads back as extendedLanguageTag "de"), so the old
-            // prefix compare found nothing and its positional fallback selected a WRONG-LANGUAGE
-            // option (device: the second German track rendered the English rendition in PiP).
-            // Language-tagged tracks now select nothing on a failed match; only language-less
-            // tracks keep the positional fallback.
-            var selected: AVMediaSelectionOption?
-            if ordinal < tracks.count, let lang = tracks[ordinal].language {
-                let rank = NativeSubtitleTrack.sameLanguageRank(of: ordinal, in: tracks)
-                let tags = group.options.map { $0.extendedLanguageTag }
-                if let idx = Self.nativeOptionIndex(forLanguage: lang, rank: rank, optionLanguageTags: tags) {
-                    selected = group.options[idx]
-                }
-            } else if ordinal < group.options.count {
-                selected = group.options[ordinal]
-            }
-            guard let option = selected else {
-                EngineLog.emit("[AetherEngine] native subtitle select: no matching option for ordinal=\(ordinal) lang=\(ordinal < tracks.count ? (tracks[ordinal].language ?? "nil") : "?") groupOpts=\(group.options.count)", category: .engine)
-                return
-            }
-            // #15: pre-fill BEFORE selecting, so AVPlayer fetches a populated rendition instead of racing the
-            // reader (empty .vtt). Done here (off the loopback connection) rather than blocking the .vtt handler,
-            // which serializes the connection and stalls the legible pipeline.
-            // Sodalite#32: AVKit prefetches the ENTIRE forward subtitle window (~3 min observed) in ONE burst at
-            // selection and caches whatever it gets, never re-fetching a segment it already pulled. A +5s pre-fill
-            // left ~45/46 segments empty (device-confirmed). Pre-fill far enough ahead to cover that burst; break
-            // early when the reader stops making progress (EOF / read-ahead parked) so we never wait the full
-            // deadline for content with little remaining.
-            var prefilledCues: Int?
-            if ordinal < nativeSubtitleTrackTable.count, nativeSubtitleTrackTable[ordinal].needsOCR,
-               let store = nativeStore(atOrdinal: ordinal) {
-                // A bitmap rendition is filled by the OCR worker, which this selection may have
-                // just armed. Its window is known exactly, so wait for that rather than for cue ends:
-                // a forced track's cues are sparse and would never reach the heuristic's target.
-                let began = Date()
-                let exit = await awaitSubtitleOCRCoverage(ordinal: ordinal, store: store, item: item)
-                let waited = Int(Date().timeIntervalSince(began) * 1000)
-                EngineLog.emit("[AetherEngine] native subtitle OCR pre-fill done: ordinal=\(ordinal) "
-                               + "cues=\(store.cueCount) exit=\(exit) waited=\(waited)ms", category: .engine)
-                guard exit != "superseded" else { return }
-                prefilledCues = store.cueCount
-            } else if let stores = nativeSubtitleReaderParams?.stores, ordinal < stores.count {
-                let store = stores[ordinal]
-                let target = currentTime + 240.0
-                let deadline = Date().addingTimeInterval(15.0)
-                var lastMax = 0.0
-                var stall = 0
-                // Sodalite#156: WHY the pre-fill stopped, which the line below could not say. An empty
-                // one reads the same whether the reader never started, parked, or ran out of time, and
-                // those are three different defects: the select that follows caches whatever the
-                // rendition holds at that instant, forever, so an empty exit here is a caption box
-                // with no text in it for the rest of the session.
-                let began = Date()
-                var exit = "target"
-                while store.readMaxCueEnd() < target, Date() < deadline {
-                    let m = store.readMaxCueEnd()
-                    if m > lastMax {
-                        lastMax = m
-                        stall = 0
-                    } else if lastMax > 0 {
-                        // Only treat a flat readMax as "reader done/parked" AFTER it has started producing;
-                        // before the first cue lands (seek + demux latency) readMax is legitimately 0, and an
-                        // early break would skip the pre-fill entirely (Sodalite#32 regression).
-                        stall += 1
+        nativeSubtitleSelectionOperation.replace(
+            selects: ordinal != nil,
+            isCurrentItem: { [weak self] in self?.currentAVPlayer?.currentItem === item },
+            load: { [self] in
+                // #15: with automatic media-selection criteria on (the default), AVKit can override/not-render an
+                // explicit legible selection until a view refresh. Pin manual selection so the explicit choice
+                // renders immediately and survives.
+                currentAVPlayer?.appliesMediaSelectionCriteriaAutomatically = false
+                guard let group = try await item.asset.loadMediaSelectionGroup(for: .legible) else { return nil }
+                guard !group.options.isEmpty else { return nil }
+                guard let ordinal else { return NativeSubtitleChoice(group: group, option: nil) }
+                guard ordinal >= 0 else { return nil }
+                // Rank-based selection through the ISO-synonym matcher: AVFoundation normalizes HLS
+                // LANGUAGE tags (matroska "ger" reads back as extendedLanguageTag "de"), so the old
+                // prefix compare found nothing and its positional fallback selected a WRONG-LANGUAGE
+                // option (device: the second German track rendered the English rendition in PiP).
+                // Language-tagged tracks now select nothing on a failed match; only language-less
+                // tracks keep the positional fallback.
+                var selected: AVMediaSelectionOption?
+                if ordinal < tracks.count, let lang = tracks[ordinal].language {
+                    let rank = NativeSubtitleTrack.sameLanguageRank(of: ordinal, in: tracks)
+                    let tags = group.options.map { $0.extendedLanguageTag }
+                    if let idx = Self.nativeOptionIndex(forLanguage: lang, rank: rank, optionLanguageTags: tags) {
+                        selected = group.options[idx]
                     }
-                    if stall >= 6 { exit = "stall"; break }   // ~900ms with no new cues after producing => EOF / read-ahead parked
-                    try? await Task.sleep(nanoseconds: 150_000_000)
+                } else if ordinal < group.options.count {
+                    selected = group.options[ordinal]
                 }
-                if exit == "target", store.readMaxCueEnd() < target { exit = "deadline" }
-                let waited = Int(Date().timeIntervalSince(began) * 1000)
-                EngineLog.emit("[AetherEngine] native subtitle pre-fill done: readMax=\(String(format: "%.1f", store.readMaxCueEnd())) target=\(String(format: "%.1f", target)) cues=\(store.cueCount) exit=\(exit) waited=\(waited)ms readersRunning=\(nativeSubtitleReadersTask != nil)", category: .engine)
-                prefilledCues = store.cueCount
-            }
-            // Sodalite#156: never hand AVKit an EMPTY rendition. The comment above says why the
-            // pre-fill exists; this is the half that was missing, and without it the pre-fill is
-            // advice rather than a gate. AVKit fetches the whole forward window in one burst at
-            // selection and never re-fetches a segment it already has, so selecting an empty
-            // rendition is not a slow start, it is a caption box with no text in it for the rest of
-            // the session (device log 2026-09-19: `cues=0 exit=deadline waited=15146ms`, then
-            // `selected=Deutsch`, then an empty `subs_0_392.vtt` the receiver kept).
-            //
-            // Empty is not always a race. The store can be legitimately empty because the track has
-            // nothing to say here: a FORCED subtitle covers foreign dialogue only, and Sodalite
-            // selects one silently when the viewer turns subtitles off. Waiting longer would not have
-            // helped that one, and the deadline had already been paid in full.
-            //
-            // Refusing costs nothing that selecting would have bought: nothing is drawn either way,
-            // and only the refusal can be retried. `nativeSubtitleReapplyOrdinal` is set before this
-            // runs, so the readers' own re-anchor re-selects once coverage reaches the playhead.
-            if prefilledCues == 0 {
-                EngineLog.emit("[AetherEngine] native subtitle select refused: rendition ordinal=\(ordinal) "
-                               + "is empty at the playhead, and AVKit caches what it is handed. "
-                               + "Leaving it deselected; the readers' re-anchor retries once it has cues",
-                               category: .engine)
-                return
-            }
-            // #15: AVKit attaches the legible renderer to whatever selection is active when the rendering
-            // pipeline is established; a selection made mid-playback updates state + downloads cues but is not
-            // drawn until re-asserted. Deselect, hop one runloop, then reselect to force the renderer to attach
-            // (documented workaround; the same effect a PiP round-trip had). Needs the manual-criteria pin above.
-            let itemID = String(UInt(bitPattern: ObjectIdentifier(item).hashValue) & 0xffff, radix: 16)
-            EngineLog.emit("[AetherEngine] native subtitle select: item=\(itemID) opt=\(option.displayName) groupOpts=\(group.options.count) criteriaAuto=\(currentAVPlayer?.appliesMediaSelectionCriteriaAutomatically ?? true) itemIsCurrent=\(currentAVPlayer?.currentItem === item)", category: .engine)
-            item.select(nil, in: group)
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            item.select(option, in: group)
-            let after = item.currentMediaSelection.selectedMediaOption(in: group)?.displayName ?? "nil"
-            EngineLog.emit("[AetherEngine] native subtitle select done: selected=\(after) itemIsCurrent=\(currentAVPlayer?.currentItem === item)", category: .engine)
-            // Sodalite#32: a select landing inside a stall recovery gets dropped outright by AVFoundation
-            // (device: PiP entry 0.1s after waitingToPlay -> playing read back nil and STAYED nil; the same
-            // select succeeded on the previous entry). Re-assert briefly until it sticks or the item changes.
-            var retries = 0
-            while item.currentMediaSelection.selectedMediaOption(in: group) == nil,
-                  retries < 4,
-                  currentAVPlayer?.currentItem === item {
-                retries += 1
-                try? await Task.sleep(nanoseconds: 700_000_000)
-                item.select(option, in: group)
-                let retried = item.currentMediaSelection.selectedMediaOption(in: group)?.displayName ?? "nil"
-                EngineLog.emit("[AetherEngine] native subtitle select retry #\(retries): selected=\(retried)", category: .engine)
-            }
-        }
+                guard let option = selected else {
+                    EngineLog.emit("[AetherEngine] native subtitle select: no matching option for ordinal=\(ordinal) lang=\(ordinal < tracks.count ? (tracks[ordinal].language ?? "nil") : "?") groupOpts=\(group.options.count)", category: .engine)
+                    return nil
+                }
+                return NativeSubtitleChoice(group: group, option: option)
+            },
+            prefill: { [self] _, checkpoint in
+                guard let ordinal else { return true }
+                // #15: pre-fill BEFORE selecting, so AVPlayer fetches a populated rendition instead of racing the
+                // reader (empty .vtt). Done here (off the loopback connection) rather than blocking the .vtt handler,
+                // which serializes the connection and stalls the legible pipeline.
+                // Sodalite#32: AVKit prefetches the ENTIRE forward subtitle window (~3 min observed) in ONE burst at
+                // selection and caches whatever it gets, never re-fetching a segment it already pulled. A +5s pre-fill
+                // left ~45/46 segments empty (device-confirmed). Pre-fill far enough ahead to cover that burst; break
+                // early when the reader stops making progress (EOF / read-ahead parked) so we never wait the full
+                // deadline for content with little remaining.
+                var prefilledCues: Int?
+                if ordinal < nativeSubtitleTrackTable.count, nativeSubtitleTrackTable[ordinal].needsOCR,
+                   let store = nativeStore(atOrdinal: ordinal) {
+                    // A bitmap rendition is filled by the OCR worker, which this selection may have
+                    // just armed. Its window is known exactly, so wait for that rather than for cue ends:
+                    // a forced track's cues are sparse and would never reach the heuristic's target.
+                    let began = Date()
+                    let exit = try await checkpoint.wait { await self.awaitSubtitleOCRCoverage(ordinal: ordinal, store: store, item: item) }
+                    let waited = Int(Date().timeIntervalSince(began) * 1000)
+                    EngineLog.emit("[AetherEngine] native subtitle OCR pre-fill done: ordinal=\(ordinal) "
+                                   + "cues=\(store.cueCount) exit=\(exit) waited=\(waited)ms", category: .engine)
+                    guard exit != "superseded" else { return false }
+                    prefilledCues = store.cueCount
+                } else if let stores = nativeSubtitleReaderParams?.stores, ordinal < stores.count {
+                    let store = stores[ordinal]
+                    let target = currentTime + 240.0
+                    let deadline = Date().addingTimeInterval(15.0)
+                    var lastMax = 0.0
+                    var stall = 0
+                    // Sodalite#156: WHY the pre-fill stopped, which the line below could not say. An empty
+                    // one reads the same whether the reader never started, parked, or ran out of time, and
+                    // those are three different defects: the select that follows caches whatever the
+                    // rendition holds at that instant, forever, so an empty exit here is a caption box
+                    // with no text in it for the rest of the session.
+                    let began = Date()
+                    var exit = "target"
+                    while store.readMaxCueEnd() < target, Date() < deadline {
+                        let m = store.readMaxCueEnd()
+                        if m > lastMax {
+                            lastMax = m
+                            stall = 0
+                        } else if lastMax > 0 {
+                            // Only treat a flat readMax as "reader done/parked" AFTER it has started producing;
+                            // before the first cue lands (seek + demux latency) readMax is legitimately 0, and an
+                            // early break would skip the pre-fill entirely (Sodalite#32 regression).
+                            stall += 1
+                        }
+                        if stall >= 6 { exit = "stall"; break }   // ~900ms with no new cues after producing => EOF / read-ahead parked
+                        try await checkpoint.wait { try await Task.sleep(nanoseconds: 150_000_000) }
+                    }
+                    if exit == "target", store.readMaxCueEnd() < target { exit = "deadline" }
+                    let waited = Int(Date().timeIntervalSince(began) * 1000)
+                    EngineLog.emit("[AetherEngine] native subtitle pre-fill done: readMax=\(String(format: "%.1f", store.readMaxCueEnd())) target=\(String(format: "%.1f", target)) cues=\(store.cueCount) exit=\(exit) waited=\(waited)ms readersRunning=\(nativeSubtitleReadersTask != nil)", category: .engine)
+                    prefilledCues = store.cueCount
+                }
+                // Sodalite#156: never hand AVKit an EMPTY rendition. The comment above says why the
+                // pre-fill exists; this is the half that was missing, and without it the pre-fill is
+                // advice rather than a gate. AVKit fetches the whole forward window in one burst at
+                // selection and never re-fetches a segment it already has, so selecting an empty
+                // rendition is not a slow start, it is a caption box with no text in it for the rest of
+                // the session (device log 2026-09-19: `cues=0 exit=deadline waited=15146ms`, then
+                // `selected=Deutsch`, then an empty `subs_0_392.vtt` the receiver kept).
+                //
+                // Empty is not always a race. The store can be legitimately empty because the track has
+                // nothing to say here: a FORCED subtitle covers foreign dialogue only, and Sodalite
+                // selects one silently when the viewer turns subtitles off. Waiting longer would not have
+                // helped that one, and the deadline had already been paid in full.
+                //
+                // Refusing costs nothing that selecting would have bought: nothing is drawn either way,
+                // and only the refusal can be retried. `nativeSubtitleReapplyOrdinal` is set before this
+                // runs, so the readers' own re-anchor re-selects once coverage reaches the playhead.
+                if prefilledCues == 0 {
+                    EngineLog.emit("[AetherEngine] native subtitle select refused: rendition ordinal=\(ordinal) "
+                                   + "is empty at the playhead, and AVKit caches what it is handed. "
+                                   + "Leaving it deselected; the readers' re-anchor retries once it has cues",
+                                   category: .engine)
+                    return false
+                }
+                return true
+            },
+            deselect: { choice in item.select(nil, in: choice.group) },
+            select: { choice in item.select(choice.option, in: choice.group) },
+            needsRetry: { choice in
+                item.currentMediaSelection.selectedMediaOption(in: choice.group) == nil
+            })
+    }
+
+    private struct NativeSubtitleChoice {
+        let group: AVMediaSelectionGroup
+        let option: AVMediaSelectionOption?
     }
 
     /// #88: ordinal of the table entry backing an active track id: embedded ids match
@@ -2563,6 +2556,7 @@ extension AetherEngine {
         // Sodalite#156: the host's request is a STANDING one, not a one-shot. It says where the
         // picture is, and it holds until the picture comes back or the session ends, which is what
         // lets a later track pick or a subtitles-off know that the rendition is the display.
+        nativeSubtitleSelectionOperation.cancel()
         nativeSubtitleRenderingRequested = active
         nativeRenderingImpliedByAirPlay = false
         // #170: the AirPlay flip triggers both the engine's LAN-swap reload and the host's

@@ -739,3 +739,9 @@ The exception covers AetherEngine's own code; it does not extend to its dependen
 An SPM library product links statically by default, and for the engine itself that is the intended shape on the App Store path. LGPL-3.0 section 4(d)(0) would otherwise ask for your application's object code in a relinkable form; the exception's fourth bullet names end-user re-linking explicitly, so that half does not apply. What the exception does not waive is the source side: point at the exact tag you built against rather than the repository root, and if you patched the engine, publish the patched source under LGPL. No separate written offer is needed while that pointer resolves. The dependencies above keep their own terms either way, which is why the FFmpeg frameworks have to stay dynamically embedded in `YourApp.app/Frameworks/` instead of merged into the app binary.
 
 Being dynamic is not the same as being reached. The engine calls `avcodec_*` as ordinary external symbols, so a second FFmpeg elsewhere in the app can serve them instead: a static archive pulled in with `-force_load` becomes a definition inside your executable and beats every dylib, and a dependency that exports the same symbols (libVLC does, and CocoaPods sorts a pod ahead of a vendored framework) wins on order alone. Link AetherEngine's frameworks first. `nm -m <executable> | grep _avcodec_find_encoder` says who currently wins; the engine's own startup line says the same thing from the inside.
+
+Seevue's SV-397 subtitle selection repair owns and cancels native legible
+selection across group loading, prefill, reselection and retries. Every AVKit
+mutation checks the request generation and player item. A dependency-free test
+lane compiles that production operation without fetching media binaries:
+`swift test --package-path Tests/NativeSubtitleSelectionSupport`.
