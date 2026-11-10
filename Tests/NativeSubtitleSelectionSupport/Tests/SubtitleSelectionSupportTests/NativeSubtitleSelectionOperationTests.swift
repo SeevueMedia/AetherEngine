@@ -8,23 +8,22 @@ import XCTest
 @MainActor
 private final class Gate {
     private var held: CheckedContinuation<Void, Never>?
-    private var entered: CheckedContinuation<Void, Never>?
+    private var released = false
+    let entered = XCTestExpectation(description: "controlled native reply is held")
 
     func wait() async {
         await withCheckedContinuation {
+            if released { $0.resume(); return }
             held = $0
-            entered?.resume()
-            entered = nil
+            entered.fulfill()
         }
     }
-    func waitUntilHeld() async {
-        if held != nil { return }
-        await withCheckedContinuation { entered = $0 }
-    }
     func release() {
+        released = true
         held?.resume()
         held = nil
     }
+
 }
 
 final class NativeSubtitleSelectionOperationTests: XCTestCase {
@@ -59,7 +58,11 @@ final class NativeSubtitleSelectionOperationTests: XCTestCase {
                             await gate.wait()
                         }
                     })
-                await gate.waitUntilHeld()
+                // The owning task is canceled and every fake reply is released
+                // even if the bounded start assertion fails.
+                defer { owner.cancel(); gate.release() }
+                let entered = await XCTWaiter.fulfillment(of: [gate.entered], timeout: 1)
+                XCTAssertEqual(entered, .completed)
                 let latest = owner.replace(
                     selects: replacement != "Off", isCurrentItem: { true },
                     load: { replacement }, prefill: { _, _ in true },
@@ -87,7 +90,9 @@ final class NativeSubtitleSelectionOperationTests: XCTestCase {
                 prefill: { _, _ in await gate.wait(); return true },
                 deselect: { _ in }, select: { selected.append($0) },
                 needsRetry: { _ in false }, wait: { _ in })
-            await gate.waitUntilHeld()
+            defer { owner.cancel(); gate.release() }
+            let entered = await XCTWaiter.fulfillment(of: [gate.entered], timeout: 1)
+            XCTAssertEqual(entered, .completed)
             if teardown { owner.cancel() } else { itemIsCurrent = false }
             gate.release()
             await old.value
@@ -107,7 +112,10 @@ final class NativeSubtitleSelectionOperationTests: XCTestCase {
         for failure in ["group", "prefill", "empty"] {
             let failed = owner.replace(
                 selects: true, isCurrentItem: { true },
-                load: { if failure == "group" { throw CancellationError() }; return 1 },
+                load: {
+                    if failure == "group" { throw CancellationError() }
+                    return failure == "empty" ? nil : 1
+                },
                 prefill: { _, _ in
                     if failure == "prefill" { throw CancellationError() }
                     return false
@@ -122,5 +130,55 @@ final class NativeSubtitleSelectionOperationTests: XCTestCase {
             select: { selected.append($0) }, needsRetry: { _ in true }, wait: { _ in })
         await retry.value
         XCTAssertEqual(selected, [2, 2, 2, 2, 2]) // first application + four retries
+    }
+}
+
+
+private final class ReferenceSelection {
+    var name = "A"
+}
+
+extension NativeSubtitleSelectionOperationTests {
+    /// SV-492: model an AVKit reference that is deliberately not Sendable.
+    /// Swift 6 must keep it on MainActor across both checkpoint suspensions.
+    @MainActor func testNonSendableSelectionRemainsOnMainActorSV492() async {
+        let owner = NativeSubtitleSelectionOperation()
+        defer { owner.cancel() }
+        let selection = ReferenceSelection()
+        var selected: ReferenceSelection?
+        var callbacks: Set<String> = []
+        let task = owner.replace(
+            selects: true,
+            isCurrentItem: { MainActor.preconditionIsolated(); return true },
+            load: {
+                MainActor.preconditionIsolated()
+                callbacks.insert("load")
+                await Task.yield()
+                MainActor.preconditionIsolated()
+                return selection
+            },
+            prefill: { value, checkpoint in
+                MainActor.preconditionIsolated()
+                callbacks.insert("prefill")
+                let same = try await checkpoint.wait {
+                    await Task.yield()
+                    MainActor.preconditionIsolated()
+                    return value
+                }
+                XCTAssertTrue(same === selection)
+                return true
+            },
+            deselect: { _ in MainActor.preconditionIsolated(); callbacks.insert("deselect") },
+            select: { value in MainActor.preconditionIsolated(); selected = value; callbacks.insert("select") },
+            needsRetry: { _ in MainActor.preconditionIsolated(); callbacks.insert("retry"); return false },
+            wait: { _ in
+                MainActor.preconditionIsolated()
+                callbacks.insert("wait")
+                await Task.yield()
+                MainActor.preconditionIsolated()
+            })
+        await task.value
+        XCTAssertTrue(selected === selection)
+        XCTAssertEqual(callbacks, ["load", "prefill", "deselect", "select", "retry", "wait"])
     }
 }

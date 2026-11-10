@@ -414,6 +414,12 @@ struct TrackMenuButton: UIViewRepresentable {
 
 SwiftUI diffing can re-run `updateUIView` as often as it likes; the guard means an open menu only rebuilds on a real item change. Credit to [@ohjey](https://github.com/ohjey) for isolating the mechanism and the pattern (AetherEngine#29).
 
+Native subtitle rendition selection is owned by `NativeSubtitleSelectionOperation`.
+Its checkpoint and all callbacks are MainActor-isolated, including asynchronous
+load, cue preparation and retry waits. AVKit selection references stay on that
+actor, and each resumed operation rechecks its request and player-item generation
+before changing the selection.
+
 ## Blocking work and the cooperative pool
 
 Engine code that blocks its thread (a demuxer open or packet read, a FIFO write under
