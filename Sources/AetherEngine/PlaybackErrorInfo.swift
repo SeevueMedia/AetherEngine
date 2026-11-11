@@ -84,6 +84,8 @@ public struct PlaybackErrorKind: RawRepresentable, Sendable, Equatable, Hashable
     public static let sourceRateLimited = PlaybackErrorKind(rawValue: "sourceRateLimited")
     /// The software decode pipeline failed.
     public static let softwarePipelineFailed = PlaybackErrorKind(rawValue: "softwarePipelineFailed")
+    /// The Profile 7 FEL composer exceeded its bounded GPU-stall recovery.
+    public static let dolbyVisionCompositionStalled = PlaybackErrorKind(rawValue: "dolbyVisionCompositionStalled")
     /// An audio-only session failed.
     public static let audioSessionFailed = PlaybackErrorKind(rawValue: "audioSessionFailed")
     /// A background reload of the same source failed.

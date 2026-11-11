@@ -1160,6 +1160,26 @@ final class SoftwarePlaybackHost {
 
     var decodesDualLayer: Bool { Self.isDualLayer(videoDecoder) }
 
+    #if DualLayerDolbyVision
+    nonisolated static func dualLayerFailure(_ error: Error) -> PlaybackErrorInfo {
+        let kind: PlaybackErrorKind
+        if case .composerStalled? = error as? VideoDecoderError {
+            kind = .dolbyVisionCompositionStalled
+        } else {
+            kind = .softwarePipelineFailed
+        }
+        return PlaybackErrorInfo(kind: kind, message: "Playback error: \(error.localizedDescription)")
+    }
+    #endif
+
+    var dualLayerDeliveryCounts: (composed: Int, bypassed: Int)? {
+        #if DualLayerDolbyVision
+        (videoDecoder as? DualLayerVideoDecoder)?.deliveryCounts
+        #else
+        nil
+        #endif
+    }
+
     /// Selects and instantiates the appropriate VideoDecodingPipeline based on stream and host options.
     func selectVideoDecoder(
         codecID: AVCodecID,
@@ -1336,9 +1356,7 @@ final class SoftwarePlaybackHost {
                 dual.onFatalDecodeError = { [weak self] error in
                     Task { @MainActor [weak self] in
                         guard let self, SoftwareReadAdmission.admitsSessionFailure(stopRequested: self.stopRequested) else { return }
-                        self.failure = PlaybackErrorInfo(
-                            kind: .softwarePipelineFailed,
-                            message: "Playback error: \(error.localizedDescription)")
+                        self.failure = Self.dualLayerFailure(error)
                     }
                 }
             }

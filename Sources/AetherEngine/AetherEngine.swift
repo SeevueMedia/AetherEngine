@@ -656,6 +656,15 @@ public final class AetherEngine: ObservableObject {
     /// base layer, whatever the display; `sourceDVProfile` keeps 7.
     @Published public internal(set) var dolbyVisionConversion: DolbyVisionConversion? = nil
 
+    /// The last decision for this source; nil outside Profile 7. Does not prove composition or display.
+    public private(set) var profile7DualLayerAdmission: Profile7DualLayerAdmission?
+
+    /// Frames delivered to the host callback by the active software-host dual-layer decoder, since it opened.
+    /// Nil unless that decoder is selected. Counts exclude stale frames and do not prove panel output.
+    public var profile7SoftwareDelivery: (composed: Int, bypassed: Int)? {
+        softwareHost?.dualLayerDeliveryCounts
+    }
+
     /// A HDR10+ (ST 2094-40) T.35 payload was seen in this session's video, whatever the source's format.
     /// `sourceVideoFormat` records it only for an HDR10 source, so a Dolby Vision source carrying both kinds
     /// of dynamic metadata would otherwise lose it the moment a late panel proof republishes the label.
@@ -4754,6 +4763,7 @@ public final class AetherEngine: ObservableObject {
         dolbyVisionConversion = nil
         sourceCarriesHDR10PlusMetadata = false
         sourceElType = nil
+        profile7DualLayerAdmission = nil
         outputRouteFrameRate = nil
         sourceUpscalePlan = nil
         sourceUpscaleDisabled = nil
@@ -5604,10 +5614,13 @@ public final class AetherEngine: ObservableObject {
                 category: .engine
             )
         }
+        let nativeObjectAudioRequired = options.preferDualLayerDolbyVision
+            && options.dualLayerRoute == .softwareHost && options.prioritizeNativeObjectAudioOverFEL
+            && detectedDVProfileNum == 7 && DualLayerRouteDecision.needsNativeObjectAudio(probedAudioTracks)
         // A split Dolby Vision source (enhancement layer on its own PID or track) joins the layers into single-track
         // units when the dual-layer route is wanted, so the checks below see the stream the decoder would read. The
         // join is undone after the decision when the route is not taken.
-        if probeOpened, !options.isLive, probe.canJoinDolbyVisionEnhancementLayer,
+        if probeOpened, !options.isLive, !nativeObjectAudioRequired, probe.canJoinDolbyVisionEnhancementLayer,
            VideoRoutingPolicy.dualLayerRouteIsWanted(
                codecID: detectedCodecID,
                dvProfile: detectedDVProfileNum,
@@ -5622,7 +5635,7 @@ public final class AetherEngine: ObservableObject {
         // reuses this demuxer, so the software host and its decoders see the completed record too.
         // AE#348: the dual-layer probes below open a VideoToolbox session, which is decode work the serial
         // order never ran mid-switch. A source that may take that route settles the panel first.
-        if !panelRoutingSettled, VideoRoutingPolicy.dualLayerRouteIsWanted(
+        if !panelRoutingSettled, !nativeObjectAudioRequired, VideoRoutingPolicy.dualLayerRouteIsWanted(
                codecID: detectedCodecID,
                dvProfile: detectedDVProfileNum,
                dolbyVisionHandling: options.dolbyVisionHandling,
@@ -5631,7 +5644,7 @@ public final class AetherEngine: ObservableObject {
             try await settlePanelRouting(ownsProbe: true)
         }
         if probeOpened, probe.videoStreamIndex >= 0, !options.isLive, probe.isSourceSeekable,
-           VideoRoutingPolicy.dualLayerRouteIsWanted(
+           !nativeObjectAudioRequired, VideoRoutingPolicy.dualLayerRouteIsWanted(
                codecID: detectedCodecID,
                dvProfile: detectedDVProfileNum,
                dolbyVisionHandling: options.dolbyVisionHandling,
@@ -5690,7 +5703,7 @@ public final class AetherEngine: ObservableObject {
             isSourceSeekable: dualLayerSeekable,
             canHardwareDecode: opensHardwareHEVC,
             enhancementLayerInPackets: !probe.foldsBluRayDolbyVisionLayers || probe.joinsDolbyVisionEnhancementLayer,
-            airPlayVideoReceiver: airPlayVideoReceiver) == nil {
+            airPlayVideoReceiver: airPlayVideoReceiver, nativeObjectAudioRequired: nativeObjectAudioRequired) == nil {
             let vIdx = probe.videoStreamIndex
             elType = await BlockingWork.detached(priority: .userInitiated) { [probe] in
                 let result = DolbyVisionRecordAudit.probeEnhancementLayerType(demuxer: probe, streamIndex: vIdx)
@@ -5723,7 +5736,8 @@ public final class AetherEngine: ObservableObject {
             elType: elType,
             geometry: dualLayerGeometry,
             enhancementLayerInPackets: !probe.foldsBluRayDolbyVisionLayers || probe.joinsDolbyVisionEnhancementLayer,
-            airPlayVideoReceiver: airPlayVideoReceiver)
+            airPlayVideoReceiver: airPlayVideoReceiver, nativeObjectAudioRequired: nativeObjectAudioRequired)
+        profile7DualLayerAdmission = dualLayerDecision.admission
         if let line = dualLayerDecision.logLine {
             EngineLog.emit(line, category: .engine)
         }
@@ -7345,6 +7359,7 @@ public final class AetherEngine: ObservableObject {
         dolbyVisionConversion = nil
         sourceCarriesHDR10PlusMetadata = false
         sourceElType = nil
+        profile7DualLayerAdmission = nil
         outputRouteFrameRate = nil
         sourceUpscalePlan = nil
         sourceUpscaleDisabled = nil

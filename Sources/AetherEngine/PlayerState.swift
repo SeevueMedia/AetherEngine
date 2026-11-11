@@ -526,6 +526,12 @@ public struct LoadOptions: Sendable, Equatable {
     /// which also decodes it and loses the objects. Not engineered around.
     public var preferDualLayerDolbyVision: Bool = false
 
+    /// Keep the native audio route when a selectable E-AC-3, TrueHD or DTS track may carry objects.
+    /// A stream may not announce its objects in the probe, and a later audio selection may reuse
+    /// the current video pipeline. Opt in on hosts without verified software-host object rendering.
+    /// Applies only to the software-host Profile 7 FEL route.
+    public var prioritizeNativeObjectAudioOverFEL: Bool = false
+
     /// Which route composes the Profile 7 FEL picture once `preferDualLayerDolbyVision` has chosen the
     /// dual-layer route. Default `.softwareHost`, the route described above. `.avPlayerOutput` is the
     /// second route: AVPlayer plays the base layer and the audio from the engine's loopback HLS
