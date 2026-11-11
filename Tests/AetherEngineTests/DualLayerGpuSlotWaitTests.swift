@@ -720,7 +720,9 @@ extension HeavyDualLayerSuites {
             let reported = try await waitFor(upTo: .seconds(30)) { probe.count >= 1 }
             #expect(reported, "an endless stall must end in a reported error")
             guard reported else { return }
-            #expect(probe.first as? VideoDecoderError != nil)
+            let failure = try #require(probe.first)
+            #expect(SoftwarePlaybackHost.dualLayerFailure(failure).kind == .dolbyVisionCompositionStalled)
+            #expect(SoftwarePlaybackHost.dualLayerFailure(VideoDecoderError.noExtradata).kind == .softwarePipelineFailed)
             if case .composerStalled? = probe.first as? VideoDecoderError {} else { Issue.record("wrong error: \(String(describing: probe.first))") }
             #expect(probe.sawStoredError == [true], "the handler saw fatalDecodeError set and could take the decoder's locks")
             #expect(rig.decoder.fatalDecodeError is VideoDecoderError)

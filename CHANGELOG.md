@@ -10,6 +10,8 @@ the public-API contract.
 
 ## [Unreleased]
 
+- **Profile 7 FEL host evidence.** Expose admission and actual composed/bypassed frame delivery, a typed sustained-composer failure, and an opt-in gate for hosts that need to keep potential object audio on the native route.
+
 ### Added
 
 - **Optional authored ASS rendering with host-supplied fonts.** The `AetherASS` product

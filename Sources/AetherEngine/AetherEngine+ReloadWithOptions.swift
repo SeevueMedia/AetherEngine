@@ -439,7 +439,9 @@ enum SessionOptionCorrection {
         let handlingMovesRoute = proposed.dolbyVisionHandling != current.dolbyVisionHandling
             && proposed.preferDualLayerDolbyVision
         let routeMoves = proposed.dualLayerRoute != current.dualLayerRoute && proposed.preferDualLayerDolbyVision
-        guard preferenceChanged || handlingMovesRoute || routeMoves else { return nil }
+        let audioPolicyMovesRoute = proposed.prioritizeNativeObjectAudioOverFEL != current.prioritizeNativeObjectAudioOverFEL
+            && proposed.preferDualLayerDolbyVision && proposed.dualLayerRoute == .softwareHost
+        guard preferenceChanged || handlingMovesRoute || routeMoves || audioPolicyMovesRoute else { return nil }
         return .dualLayerRouteNeedsFreshLoad
     }
 
@@ -485,7 +487,7 @@ enum SessionOptionCorrection {
     static let knownFields: [String] = [
         "sourceDiagnosticsContext",
         "omitCriteriaColorExtensions", "suppressDisplayCriteria", "displayCriteriaOwner", "httpHeaders", "nativeVideoFrameDiagnostics", "nativeVideoFrameRecovery", "hostRetriesExhaustedLiveReplay",
-        "keepDvh1TagWithoutDV", "forceDolbyVisionOnNonDVDisplay", "dolbyVisionHandling", "preferDualLayerDolbyVision", "dualLayerRoute", "upscalesLowResolutionVideo", "matchContentEnabled",
+        "keepDvh1TagWithoutDV", "forceDolbyVisionOnNonDVDisplay", "dolbyVisionHandling", "preferDualLayerDolbyVision", "prioritizeNativeObjectAudioOverFEL", "dualLayerRoute", "upscalesLowResolutionVideo", "matchContentEnabled",
         "panelIsInHDRMode", "attemptsHDRMasterOnUnprovenPanel", "panelPresentsDolbyVision",
         "audioBridgeMode", "objectAudioRendering", "stereoPresentation", "isLive", "audioOnly",
         "dvrWindowSeconds",

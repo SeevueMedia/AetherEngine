@@ -1,5 +1,13 @@
 import AetherLibavcodec
 
+/// The current Profile 7 admission verdict, separate from actual frame delivery.
+public enum Profile7DualLayerAdmission: String, Sendable {
+    case eligible
+    case preferenceOff, notBuiltIn, enhancementLayerNotInPackets, baseLayerOnlyHandling
+    case liveOrNotSeekable, noHardwareHEVC, airPlayVideoReceiver, nativeObjectAudioRequired
+    case melEnhancementLayer, enhancementLayerTypeUnknown, geometryUnknown, overBudget
+}
+
 /// Whether a Profile 7 load takes the dual-layer route (`SoftwarePlaybackHost` + `DualLayerVideoDecoder`)
 /// or keeps the native route (single-layer 8.1 where the display takes Dolby Vision), and if not, why. Pure so every exit is unit-testable; the load asks it
 /// once per P7 source and logs `logLine`, so the diagnostic and the routing cannot disagree.
@@ -31,6 +39,7 @@ enum DualLayerRouteDecision: Equatable {
         /// composed picture, so the session keeps the native route (8.1 where the display takes Dolby
         /// Vision; the enhancement layer is lost). An audio-only AirPlay output (a speaker) is not this reason.
         case airPlayVideoReceiver
+        case nativeObjectAudioRequired
         case melEnhancementLayer
         case enhancementLayerTypeUnknown
         /// The base layer's width or height is not positive (the probe found none): the budget cannot be
@@ -109,14 +118,18 @@ enum DualLayerRouteDecision: Equatable {
         isSourceSeekable: Bool,
         canHardwareDecode: (() -> Bool)?,
         enhancementLayerInPackets: Bool = true,
-        airPlayVideoReceiver: Bool = false
+        airPlayVideoReceiver: Bool = false,
+        nativeObjectAudioRequired: Bool = false
     ) -> Reason? {
         guard codecID == AV_CODEC_ID_HEVC, dvProfile == 7 else { return .notProfile7 }
         guard preferDualLayerDolbyVision else { return .preferenceOff }
         guard isBuiltIn else { return .notBuiltIn }
-        guard enhancementLayerInPackets else { return .enhancementLayerNotInPackets }
         guard dolbyVisionHandling == .automatic else { return .baseLayerOnlyHandling }
         guard !isLive, isSourceSeekable else { return .liveOrNotSeekable }
+        // This policy deliberately suppresses a possible split-layer join. Do not
+        // misreport that as a source whose enhancement layer could not be joined.
+        guard !nativeObjectAudioRequired else { return .nativeObjectAudioRequired }
+        guard enhancementLayerInPackets else { return .enhancementLayerNotInPackets }
         guard canHardwareDecode?() ?? true else { return .noHardwareHEVC }
         guard !airPlayVideoReceiver else { return .airPlayVideoReceiver }
         return nil
@@ -181,14 +194,15 @@ enum DualLayerRouteDecision: Equatable {
         geometry: Geometry,
         enhancementLayerSize: (width: Int, height: Int)? = nil,
         enhancementLayerInPackets: Bool = true,
-        airPlayVideoReceiver: Bool = false
+        airPlayVideoReceiver: Bool = false,
+        nativeObjectAudioRequired: Bool = false
     ) -> DualLayerRouteDecision {
         if let reason = blockingReasonBeforeProbe(
             codecID: codecID, dvProfile: dvProfile, dolbyVisionHandling: dolbyVisionHandling,
             preferDualLayerDolbyVision: preferDualLayerDolbyVision, isLive: isLive,
             isSourceSeekable: isSourceSeekable, canHardwareDecode: canHardwareDecode,
             enhancementLayerInPackets: enhancementLayerInPackets,
-            airPlayVideoReceiver: airPlayVideoReceiver) {
+            airPlayVideoReceiver: airPlayVideoReceiver, nativeObjectAudioRequired: nativeObjectAudioRequired) {
             return .notTaken(reason)
         }
         switch elType {
@@ -204,6 +218,34 @@ enum DualLayerRouteDecision: Equatable {
         default:
             return .notTaken(.enhancementLayerTypeUnknown)
         }
+    }
+
+    var admission: Profile7DualLayerAdmission? {
+        switch self {
+        case .taken: .eligible
+        case .notTaken(let reason):
+            switch reason {
+            case .notProfile7: nil
+            case .preferenceOff: .preferenceOff
+            case .notBuiltIn: .notBuiltIn
+            case .enhancementLayerNotInPackets: .enhancementLayerNotInPackets
+            case .baseLayerOnlyHandling: .baseLayerOnlyHandling
+            case .liveOrNotSeekable: .liveOrNotSeekable
+            case .noHardwareHEVC: .noHardwareHEVC
+            case .airPlayVideoReceiver: .airPlayVideoReceiver
+            case .nativeObjectAudioRequired: .nativeObjectAudioRequired
+            case .melEnhancementLayer: .melEnhancementLayer
+            case .enhancementLayerTypeUnknown: .enhancementLayerTypeUnknown
+            case .geometryUnknown: .geometryUnknown
+            case .overBudget: .overBudget
+            }
+        }
+    }
+
+    /// These are the codec names returned by the demuxer, not track labels. Some streams
+    /// only reveal their objects during decoding; don't use missing tags as negative proof.
+    static func needsNativeObjectAudio(_ tracks: [TrackInfo]) -> Bool {
+        tracks.contains { ["eac3", "truehd", "dca", "dts"].contains($0.codec.lowercased()) || $0.isAtmos || $0.isDTSX }
     }
 
     var isTaken: Bool {
@@ -245,6 +287,8 @@ extension DualLayerRouteDecision.Reason {
             return "no hardware HEVC decoder for this stream"
         case .airPlayVideoReceiver:
             return "an AirPlay video receiver holds the audio route and takes a stream, not a composed picture"
+        case .nativeObjectAudioRequired:
+            return "native audio route required for a potential object-audio track"
         case .melEnhancementLayer:
             return "el_type=MEL, nothing to compose"
         case .enhancementLayerTypeUnknown:

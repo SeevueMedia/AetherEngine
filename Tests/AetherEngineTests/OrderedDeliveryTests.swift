@@ -59,6 +59,22 @@ struct OrderedDeliveryTests {
         #expect(recorder.snapshot == [0, 1, 2, 3, 4])
     }
 
+    @Test("only emitted frames count and a retired GPU completion is ignored")
+    func deliveredCompositionEvidence() throws {
+        let buffer = try #require(Self.makeBuffer())
+        let delivery = OrderedDelivery(maxFramesInFlight: 3, maxLayerSkew: 3)
+        delivery.setOnFrame { _, _, _ in }
+        delivery.fulfil(ticket: 0, epoch: 0, Self.frame(buffer, tag: 0))
+        delivery.reset(epoch: 1, nextTicket: 1)
+        let composed = DeliveredFrame(buffer: SendableBuffer(value: buffer), pts: .zero,
+                                      hdr10Data: nil, dmNAL: nil, composed: true)
+        delivery.fulfil(ticket: 1, epoch: 0, composed)
+        delivery.fulfil(ticket: 1, epoch: 1, composed)
+        delivery.barrier()
+        #expect(delivery.deliveryCounts.bypassed == 1)
+        #expect(delivery.deliveryCounts.composed == 1)
+    }
+
     @Test("a skipped ticket keeps its place, emits nothing and does not hold up the frames behind it")
     func skippedTicketEmitsNothing() async throws {
         let buffer = try #require(Self.makeBuffer())

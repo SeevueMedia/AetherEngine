@@ -36,6 +36,15 @@ struct DeliveredFrame: Sendable {
     /// The Profile 8.1 `unspec62` NAL (with its 2-byte header) for this frame,
     /// or nil if none was cached for its PTS. See `DoviDisplayMetadata.attach`.
     let dmNAL: [UInt8]?
+    let composed: Bool
+
+    init(buffer: SendableBuffer, pts: CMTime, hdr10Data: Data?, dmNAL: [UInt8]?, composed: Bool = false) {
+        self.buffer = buffer
+        self.pts = pts
+        self.hdr10Data = hdr10Data
+        self.dmNAL = dmNAL
+        self.composed = composed
+    }
 }
 
 /// Ordered, single-owner delivery of decoded and composed frames to the host
@@ -118,6 +127,14 @@ final class OrderedDelivery: @unchecked Sendable {
     private let pendingCountLock = NSLock()
     private var pendingCount: Int = 0
     private var peakPendingCount: Int = 0
+    private var composedCount = 0
+    private var bypassedCount = 0
+
+    var deliveryCounts: (composed: Int, bypassed: Int) {
+        pendingCountLock.lock()
+        defer { pendingCountLock.unlock() }
+        return (composedCount, bypassedCount)
+    }
 
     private struct PendingEntry {
         /// Nil for a ticket that is given up on: it takes its place in line and emits nothing.
@@ -303,7 +320,11 @@ final class OrderedDelivery: @unchecked Sendable {
         if DoviDmPassthroughProbe.shared.isOn {
             DoviDmPassthroughProbe.shared.observe(buffer: frame.buffer.value, key: DualLayerVideoDecoder.canonicalKey(pts: frame.pts), pts: frame.pts)
         }
-        onFrame?(frame.buffer.value, frame.pts, frame.hdr10Data)
+        guard let onFrame else { return }
+        onFrame(frame.buffer.value, frame.pts, frame.hdr10Data)
+        pendingCountLock.lock()
+        if frame.composed { composedCount += 1 } else { bypassedCount += 1 }
+        pendingCountLock.unlock()
     }
 
     private func updatePendingCounts() {

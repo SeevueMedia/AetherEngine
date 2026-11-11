@@ -46,6 +46,26 @@ struct DualLayerRouteDecisionTests {
             canHardwareDecode: { true }, enhancementLayerInPackets: false) == .enhancementLayerNotInPackets)
     }
 
+    @Test("opt-in native audio preservation refuses FEL before doing a hardware probe")
+    func preservesPotentialObjectAudio() {
+        let bed = TrackInfo(id: 0, name: "Stereo", codec: "aac", language: nil, isDefault: true)
+        #expect(!DualLayerRouteDecision.needsNativeObjectAudio([bed]))
+        for codec in ["eac3", "truehd", "dca", "dts"] {
+            let alternate = TrackInfo(id: 1, name: "Alternate", codec: codec, language: nil, isDefault: false)
+            let blocked = DualLayerRouteDecision.needsNativeObjectAudio([bed, alternate])
+            #expect(blocked)
+            let decision = DualLayerRouteDecision.decide(
+                codecID: AV_CODEC_ID_HEVC, dvProfile: 7, dolbyVisionHandling: .automatic,
+                preferDualLayerDolbyVision: true, isLive: false, isSourceSeekable: true,
+                canHardwareDecode: { Issue.record("no probe needed"); return true },
+                elType: nil, geometry: uhd24, enhancementLayerInPackets: false, nativeObjectAudioRequired: blocked)
+            #expect(decision.admission == .nativeObjectAudioRequired)
+        }
+        #expect(decide(profile: 5).admission == nil)
+        #expect(decide(profile: 8).admission == nil)
+        #expect(decide(elType: "MEL").admission == .melEnhancementLayer)
+    }
+
     @Test("MEL never takes the route, with the flag on")
     func melNeverTakesTheRoute() {
         let decision = decide(prefer: true, elType: "MEL")

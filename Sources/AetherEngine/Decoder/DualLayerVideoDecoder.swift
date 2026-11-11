@@ -208,6 +208,7 @@ final class DualLayerVideoDecoder: VideoDecodingPipeline, @unchecked Sendable {
 
     /// The base layer's count: the enhancement layer decodes the same pictures.
     var framesDecoded: UInt64 { primaryDecoder.framesDecoded }
+    var deliveryCounts: (composed: Int, bypassed: Int) { orderedDelivery.deliveryCounts }
 
     /// AE#739: called when the system invalidates either layer's session. Both sub-decoders report
     /// through `reportSessionLost()` (installed outside `lock`, as `skipUntilPTS` is), the enhancement
@@ -1592,7 +1593,7 @@ final class DualLayerVideoDecoder: VideoDecodingPipeline, @unchecked Sendable {
                     }
                     // `.baseIntact` is the raw base layer, so it carries the RPU that still holds the mapping.
                     delivery.fulfil(ticket: ticket, epoch: epoch, DeliveredFrame(buffer: fallback, pts: pts, hdr10Data: hdr10Data,
-                                                                                 dmNAL: result == .composed ? dmNAL : baseLayerNAL))
+                                                                                 dmNAL: result == .composed ? dmNAL : baseLayerNAL, composed: result == .composed))
                 case .baseCorrupted:
                     EngineLog.emit("[DualLayerVideoDecoder] compose failed after writing began (\(arrived)): pts=\(String(format: "%.3f", pts.seconds)); frame dropped", category: .swPlayback)
                     self?.recordInPlaceDrop()
@@ -1615,7 +1616,7 @@ final class DualLayerVideoDecoder: VideoDecodingPipeline, @unchecked Sendable {
             // The fallback is the raw base layer, so it carries the RPU that still holds the mapping.
             let buffer = SendableBuffer(value: composed ?? fallback.value)
             delivery.fulfil(ticket: ticket, epoch: epoch, DeliveredFrame(buffer: buffer, pts: pts, hdr10Data: hdr10Data,
-                                                                         dmNAL: composed != nil ? dmNAL : baseLayerNAL))
+                                                                         dmNAL: composed != nil ? dmNAL : baseLayerNAL, composed: composed != nil))
             self?.composeResultLock.lock(); self?.composeRequestsHandedOff += 1; self?.composeResultLock.unlock()
         }
     }
