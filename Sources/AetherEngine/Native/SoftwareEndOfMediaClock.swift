@@ -27,6 +27,25 @@ enum SoftwareEndOfMediaClock {
         return min(remaining, maxTailPlayoutSeconds)
     }
 
+    /// How far past the newest enqueued picture's timestamp the clock must run for that picture to
+    /// be presented. The display layer shows a sample once the clock reaches its PTS; parking exactly
+    /// on it can land a hair short after the float round trip, so the park goes one millisecond past.
+    static let videoPresentationMarginSeconds: TimeInterval = 0.001
+
+    /// Seconds to let the clock run so it reaches both the end of the queued audio and the last
+    /// picture handed to the renderer, clamped like the audio tail. A final picture can sit past the
+    /// last audio sample (an MPEG-PS title's last frame, measured 16 ms past it); parking on the audio
+    /// tail alone left that picture enqueued and never presented. `newestVideoPts` is nil when no
+    /// picture was enqueued; an unusable value counts as no picture.
+    static func tailPlayoutSeconds(clockSeconds: Double, lastAudioPts: Double,
+                                   newestVideoPts: Double?) -> TimeInterval {
+        let audioTail = tailPlayoutSeconds(clockSeconds: clockSeconds, lastAudioPts: lastAudioPts)
+        guard clockSeconds.isFinite, let newestVideoPts, newestVideoPts.isFinite else { return audioTail }
+        let videoRemaining = newestVideoPts + videoPresentationMarginSeconds - clockSeconds
+        guard videoRemaining > 0 else { return audioTail }
+        return max(audioTail, min(videoRemaining, maxTailPlayoutSeconds))
+    }
+
     /// Where a late park puts the clock: back on `latest` when the clock has run past it, nil (park
     /// where it stands) otherwise or when either value is unusable.
     static func parkSeconds(clockSeconds: Double, notAfter latest: Double) -> Double? {
