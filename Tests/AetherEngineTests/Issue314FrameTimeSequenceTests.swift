@@ -127,6 +127,31 @@ struct Issue314FrameTimeSequenceTests {
                 "straggler reported \(straggler), which outranks the new item's \(incomingGeneration)")
     }
 
+    @Test("an outgoing renderer keeps its load tag after its replacement is built and after a flush")
+    @MainActor
+    func lateSoftwareFramesKeepTheirLoadTag() throws {
+        let outgoing = SampleBufferRenderer(frameTimeLoadTag: 8)
+        let incoming = SampleBufferRenderer(frameTimeLoadTag: 9)
+        let frames = GenerationCollector()
+        let observer: SoftwareVideoFrameTimeObserver = { frames.append($0) }
+        outgoing.setFrameEnqueuedObserver(observer)
+        incoming.setFrameEnqueuedObserver(observer)
+
+        outgoing.enqueue(pixelBuffer: Self.makePixelBuffer(), pts: .zero)
+        outgoing.drainReorderBuffer()
+        outgoing.flush(removingDisplayedImage: true)
+        outgoing.enqueue(pixelBuffer: Self.makePixelBuffer(), pts: .zero)
+        outgoing.drainReorderBuffer()
+        incoming.enqueue(pixelBuffer: Self.makePixelBuffer(), pts: .zero)
+        incoming.drainReorderBuffer()
+
+        let observed = frames.values
+        #expect(observed.map(\.loadTag) == [8, 8, 9])
+        let late = try #require(observed.dropFirst().first)
+        let replacement = try #require(observed.last)
+        #expect(late.generation > replacement.generation)
+    }
+
     // MARK: - Native path
 
     /// Same seam on the native path, where the sessions are real: two `HLSVideoEngine` instances stand

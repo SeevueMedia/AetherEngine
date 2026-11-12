@@ -29,14 +29,22 @@ public struct SoftwareVideoFrameTime: Sendable, Equatable {
     /// empties the queue.
     ///
     /// Strictly increasing process-wide, across `load()` calls as well as within one session (#314). A
-    /// load builds a new renderer, and the sequence continues there rather than restarting, so a frame
-    /// the outgoing renderer still hands over always ranks below the new one's first. Successive
-    /// generations are not consecutive and the values carry no meaning beyond their order.
+    /// load builds a new renderer and the sequence continues there rather than restarting. Successive
+    /// generations are not consecutive. Use `loadTag` to identify the load independently of flush order.
     public let generation: UInt64
 
+    /// The value supplied in `LoadOptions.softwareVideoFrameTimeLoadTag` for this renderer's load.
+    /// It remains constant across flushes and is nil when the host supplies no tag.
+    public let loadTag: Int64?
+
     public init(presentation: CMTime, generation: UInt64) {
+        self.init(presentation: presentation, generation: generation, loadTag: nil)
+    }
+
+    public init(presentation: CMTime, generation: UInt64, loadTag: Int64?) {
         self.presentation = presentation
         self.generation = generation
+        self.loadTag = loadTag
     }
 }
 

@@ -14,6 +14,10 @@ the public-API contract.
 
 ### Added
 
+- **Optional load identity on software frame callbacks.** Hosts can set
+  `LoadOptions.softwareVideoFrameTimeLoadTag` to tell which load produced
+  a `SoftwareVideoFrameTime`, including late callbacks from an outgoing renderer.
+
 - **Optional authored ASS rendering with host-supplied fonts.** The `AetherASS` product
   uses libass without adding a renderer to the playback core. Hosts supply bounded fonts
   and scripts, render on their serial queue and source clock, and can force a fresh image

@@ -34,6 +34,7 @@ struct Issue311SoftwareFrameTimesTests {
         // EOF drains the rest, still in ascending order rather than the order they arrived.
         renderer.drainReorderBuffer()
         #expect(seen.values.map { $0.presentation.seconds } == [0.00, 0.04, 0.08, 0.12, 0.16, 0.20])
+        #expect(seen.values.allSatisfy { $0.loadTag == nil })
     }
 
     @Test("a frame refused at the unschedulable-PTS gate is never reported")
@@ -138,6 +139,24 @@ struct Issue311SoftwareFrameTimesTests {
         #expect(engine.softwareVideoFrameTimeObserver != nil)
         engine.setSoftwareVideoFrameTimeObserver(nil)
         #expect(engine.softwareVideoFrameTimeObserver == nil)
+    }
+
+    @Test("a tagged software load passes its identity through to the observer", .timeLimit(.minutes(3)))
+    @MainActor
+    func softwareLoadSuppliesFrameTimeTag() async throws {
+        let engine = try AetherEngine()
+        defer { engine.stop() }
+        let seen = Collector()
+        engine.setSoftwareVideoFrameTimeObserver { seen.append($0) }
+        var options = LoadOptions(preferredDecodePath: .software)
+        options.softwareVideoFrameTimeLoadTag = 42
+
+        _ = try await engine.load(
+            source: .custom(DataIOReader(data: TinyTransportStreamFixture.data), formatHint: "mpegts"),
+            options: options)
+        #expect(engine.playbackBackend == .software)
+        try await waitFor { !seen.values.isEmpty }
+        #expect(seen.values.allSatisfy { $0.loadTag == 42 })
     }
 
     // MARK: - Helpers
