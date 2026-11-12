@@ -260,6 +260,7 @@ final class SampleBufferRenderer: @unchecked Sendable {
     /// `reorderLock` for the swap only; the call itself happens with no lock held, so a host that
     /// re-enters the renderer from it cannot deadlock.
     private var _frameEnqueuedObserver: SoftwareVideoFrameTimeObserver?
+    private let frameTimeLoadTag: Int64?
     func setFrameEnqueuedObserver(_ observer: SoftwareVideoFrameTimeObserver?) {
         reorderLock.lock()
         _frameEnqueuedObserver = observer
@@ -417,8 +418,10 @@ final class SampleBufferRenderer: @unchecked Sendable {
     /// Main-actor isolated because the layer is (#351); the only production caller,
     /// `SoftwarePlaybackHost`, already is.
     @MainActor
-    init(resumeQueue: ResumeQueue? = nil, videoGravity: AVLayerVideoGravity = .resizeAspect) {
+    init(resumeQueue: ResumeQueue? = nil, videoGravity: AVLayerVideoGravity = .resizeAspect,
+         frameTimeLoadTag: Int64? = nil) {
         self.resumeQueue = resumeQueue
+        self.frameTimeLoadTag = frameTimeLoadTag
         let layer = Self.makeDisplayLayer(isHDR: false, gravity: videoGravity)
         displayLayer = layer
         videoRenderer = layer.sampleBufferRenderer
@@ -1051,7 +1054,7 @@ final class SampleBufferRenderer: @unchecked Sendable {
         let observer = _frameEnqueuedObserver
         let generation = _flushGeneration
         reorderLock.unlock()
-        observer?(SoftwareVideoFrameTime(presentation: pts, generation: generation))
+        observer?(SoftwareVideoFrameTime(presentation: pts, generation: generation, loadTag: frameTimeLoadTag))
 
         reorderLock.lock()
         enqueueCount += 1

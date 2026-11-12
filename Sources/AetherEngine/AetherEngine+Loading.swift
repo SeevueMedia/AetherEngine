@@ -2036,7 +2036,8 @@ extension AetherEngine {
         // #489: same contract as the native host two paths over, which re-applies `_videoGravity`
         // on every build. Without it a software host came up aspect-fit whatever the app had set,
         // and only a second write mid-session took effect.
-        let host = SoftwarePlaybackHost(videoGravity: _videoGravity)
+        let host = SoftwarePlaybackHost(
+            videoGravity: _videoGravity, frameTimeLoadTag: loadedOptions.softwareVideoFrameTimeLoadTag)
         let upscaleRebuild = UpscaleRouteDecision.forRebuild(
             sessionPlan: sourceUpscalePlan, optionOn: loadedOptions.upscalesLowResolutionVideo,
             disabled: sourceUpscaleDisabled)

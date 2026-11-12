@@ -426,6 +426,9 @@ public enum DolbyVisionHandling: String, Sendable, Equatable, CaseIterable {
 }
 
 public struct LoadOptions: Sendable, Equatable {
+    /// Optional host-supplied identity echoed in `SoftwareVideoFrameTime.loadTag`. Use a
+    /// distinct value for each load when a single observer needs to reject late frames.
+    public var softwareVideoFrameTimeLoadTag: Int64? = nil
     /// Diagnostic identity only; retained with the source across internal reloads.
     public var sourceDiagnosticsContext: SourceNetworkDiagnostics.Context? = nil
     /// Diagnostic lever: omit BT.2020 / transfer / YCbCr matrix from AVDisplayCriteria so AVPlayer re-reads color from the bitstream. Default off.

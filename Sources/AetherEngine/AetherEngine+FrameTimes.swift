@@ -30,9 +30,10 @@ extension AetherEngine {
     /// to key a table by. See `SoftwareVideoFrameTime`.
     ///
     /// The observer is called on the decode thread and must not block. It outlives a `load()`, so
-    /// install it once; pass nil to remove it. `SoftwareVideoFrameTime.generation` keeps rising across
-    /// that load (#314), so the item seam needs no separate handling. Silent on every other path,
-    /// including the remote-HLS bypass, where AVPlayer owns decode and the engine never sees a frame.
+    /// install it once; pass nil to remove it. Set `LoadOptions.softwareVideoFrameTimeLoadTag`
+    /// to identify the load that produced a callback even while the old renderer is unwinding.
+    /// Silent on every other path, including the remote-HLS bypass, where AVPlayer owns decode and
+    /// the engine never sees a frame.
     public func setSoftwareVideoFrameTimeObserver(_ observer: SoftwareVideoFrameTimeObserver?) {
         softwareVideoFrameTimeObserver = observer
         softwareHost?.setVideoFrameTimeObserver(observer)

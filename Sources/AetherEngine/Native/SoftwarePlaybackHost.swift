@@ -987,13 +987,15 @@ final class SoftwarePlaybackHost {
     private let reposition: Reposition
 
     init(videoGravity: AVLayerVideoGravity = .resizeAspect,
+         frameTimeLoadTag: Int64? = nil,
          renderer: SampleBufferRenderer? = nil,
          reposition: @escaping Reposition = { dem, target, budget, queue, superseded in
              await dem.seekBounded(to: target, timeout: budget, on: queue,
                                    isSuperseded: superseded)
          }) {
         self.reposition = reposition
-        self.renderer = renderer ?? SampleBufferRenderer(videoGravity: videoGravity)
+        self.renderer = renderer ?? SampleBufferRenderer(
+            videoGravity: videoGravity, frameTimeLoadTag: frameTimeLoadTag)
         // Default to the software decoder; load() swaps it for the
         // VT-backed one when the source's video codec is HEVC.
         self.videoDecoder = SoftwareVideoDecoder()
