@@ -21,6 +21,17 @@ the public-API contract.
 
 ### Fixed
 
+- **The software path shows the last picture of an MPEG-2 stream, and a single-picture source at all.**
+  `SoftwareVideoDecoder` had no end-of-stream drain, so the flush at end of media (and before a
+  forward-only discontinuity fold) dropped the picture a reordering decoder holds back: an MPEG-2
+  title's last picture never reached the screen and a one-picture source (a DVD menu still) stayed
+  black. It now drains the decoder with a null packet before that flush.
+
+- **The software clock reaches the last enqueued picture before parking at end of media.** The
+  park waited only for the queued audio tail, so a final picture timed past the last audio sample
+  (measured 16 ms on an MPEG-PS title) was enqueued but never presented. The park now waits for
+  whichever is later, clamped as before.
+
 - **Native subtitle selection builds with Swift 6.4 concurrency checking.** Its
   checkpoint and callbacks now preserve MainActor isolation across load, cue
   preparation and retry waits, so non-Sendable AVKit selection values stay with
