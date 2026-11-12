@@ -37,4 +37,47 @@ struct SoftwareEndOfMediaClockTests {
         let tail = SoftwareEndOfMediaClock.tailPlayoutSeconds(clockSeconds: 10, lastAudioPts: 90_000)
         #expect(tail == SoftwareEndOfMediaClock.maxTailPlayoutSeconds)
     }
+    // MARK: - The last enqueued picture
+
+    @Test("A last picture timed past the last audio sample keeps the clock running until it is shown")
+    func lastPicturePastAudioDefersPark() {
+        // An MPEG-PS title: audio consumed, the final picture 16 ms ahead of the clock.
+        let tail = SoftwareEndOfMediaClock.tailPlayoutSeconds(clockSeconds: 11.98, lastAudioPts: 11.98,
+                                                              newestVideoPts: 11.996)
+        let expected = 0.016 + SoftwareEndOfMediaClock.videoPresentationMarginSeconds
+        #expect(abs(tail - expected) < 0.0001)
+    }
+
+    @Test("The park waits for whichever tail is longer")
+    func longerTailWins() {
+        let audioLonger = SoftwareEndOfMediaClock.tailPlayoutSeconds(clockSeconds: 10, lastAudioPts: 10.2,
+                                                                     newestVideoPts: 10.05)
+        #expect(abs(audioLonger - 0.2) < 0.0001)
+        let videoLonger = SoftwareEndOfMediaClock.tailPlayoutSeconds(clockSeconds: 10, lastAudioPts: 10.02,
+                                                                     newestVideoPts: 10.1)
+        #expect(abs(videoLonger - (0.1 + SoftwareEndOfMediaClock.videoPresentationMarginSeconds)) < 0.0001)
+    }
+
+    @Test("A picture the clock has already passed adds nothing")
+    func presentedPictureParksNow() {
+        #expect(SoftwareEndOfMediaClock.tailPlayoutSeconds(clockSeconds: 12, lastAudioPts: 11.9,
+                                                           newestVideoPts: 11.95) == 0)
+    }
+
+    @Test("No enqueued picture, or an unusable one, falls back to the audio tail")
+    func missingPictureFallsBackToAudio() {
+        #expect(SoftwareEndOfMediaClock.tailPlayoutSeconds(clockSeconds: 5, lastAudioPts: 5,
+                                                           newestVideoPts: nil) == 0)
+        #expect(SoftwareEndOfMediaClock.tailPlayoutSeconds(clockSeconds: 5, lastAudioPts: 5,
+                                                           newestVideoPts: .nan) == 0)
+        #expect(SoftwareEndOfMediaClock.tailPlayoutSeconds(clockSeconds: .nan, lastAudioPts: 5,
+                                                           newestVideoPts: 6) == 0)
+    }
+
+    @Test("A broken picture timestamp is clamped like the audio tail")
+    func videoTailIsClamped() {
+        let tail = SoftwareEndOfMediaClock.tailPlayoutSeconds(clockSeconds: 10, lastAudioPts: 10,
+                                                              newestVideoPts: 90_000)
+        #expect(tail == SoftwareEndOfMediaClock.maxTailPlayoutSeconds)
+    }
 }

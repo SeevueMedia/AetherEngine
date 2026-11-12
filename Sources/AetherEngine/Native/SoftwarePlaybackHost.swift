@@ -1955,15 +1955,18 @@ final class SoftwarePlaybackHost {
     /// its rate: `currentTime` then walked past `duration` without bound (measured: 20.13 s published on
     /// a 12.0 s source, against a native session that parks on 11.97 s and stays there). Deferred by the
     /// audio still queued ahead of the playhead, because parking the synchronizer stops its renderers
-    /// too and an immediate park would cut that tail. `pausedByHost` stays false: the viewer did not
+    /// too and an immediate park would cut that tail, and by the newest enqueued picture, so a last
+    /// frame timed past the last audio sample is still presented. `pausedByHost` stays false: the viewer did not
     /// pause this, the source ran out.
     private func parkClockAtEndOfMedia() {
         guard !didParkClockAtEnd else { return }
         didParkClockAtEnd = true
         guard clockArmed, let aOut = audioOutput else { return }
+        // The clock must reach the last picture handed to the renderer as well as the audio tail.
         let tail = SoftwareEndOfMediaClock.tailPlayoutSeconds(
             clockSeconds: aOut.currentTimeSeconds,
-            lastAudioPts: demuxDiag.snapshot.lastAudioPts
+            lastAudioPts: demuxDiag.snapshot.lastAudioPts,
+            newestVideoPts: renderer.newestEnqueuedPtsSeconds
         )
         guard tail > 0 else { return parkClockNow() }
         // The deferral aims at the end of the queued tail; a task that runs late must not park past it.
