@@ -541,6 +541,24 @@ final class SoftwareVideoDecoder: VideoDecodingPipeline, @unchecked Sendable {
         onFrame?(pixelBuffer, cmPTS, hdr10PlusData)
     }
 
+    /// End of stream: hand over what the decoder still holds before the caller's `flush()` drops it.
+    ///
+    /// The demux loop calls this at end of media and before folding a forward-only discontinuity,
+    /// then flushes. Without it the protocol's empty default ran here, and `avcodec_flush_buffers`
+    /// discarded the picture a reordering decoder holds back: an MPEG-2 stream's last picture
+    /// (always held, `low_delay` 0) never reached the screen, and a source that is a single
+    /// picture (a DVD still) showed nothing at all. Entering draining mode with a null packet
+    /// releases those pictures through the normal emit path; the flush that follows resets the
+    /// decoder for any packets after a fold.
+    func drainForEndOfStream() {
+        lock.lock()
+        guard let ctx = codecContext else { lock.unlock(); return }
+        let ret = avcodec_send_packet(ctx, nil)
+        lock.unlock()
+        guard ret >= 0 else { return }
+        drainDecodedFrames()
+    }
+
     /// #544: `resetFilterGraph: false` keeps the deinterlace graph across the flush. The still
     /// extractor flushes before every run, and rebuilding the graph means a fresh Metal pipeline, a
     /// fresh full-resolution hwframes pool AND an unconditional `[Deinterlace] engaged` line, about
