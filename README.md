@@ -22,6 +22,8 @@
   <a href="https://ko-fi.com/superuser404"><img src="https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=kofi&logoColor=white"></a>
 </p>
 
+> **SeevueMedia fork:** the Seevue engine line is `seevue/main` and engine PRs go there. See [SEEVUE.md](SEEVUE.md).
+
 ---
 
 ## What it is
