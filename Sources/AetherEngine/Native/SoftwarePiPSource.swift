@@ -56,6 +56,7 @@ public final class SoftwarePiPSource {
         }
         engine.$state.dropFirst().sink { _ in refresh() }.store(in: &stateCancellables)
         engine.$duration.dropFirst().sink { _ in refresh() }.store(in: &stateCancellables)
+        engine.$isSourceSeekable.dropFirst().sink { _ in refresh() }.store(in: &stateCancellables)
     }
 
     /// Recompute the transport answers from the engine and publish them to `snapshot`.
@@ -67,6 +68,7 @@ public final class SoftwarePiPSource {
                 isPaused: engine.state != .playing,
                 range: AetherEngine.softwarePiPTimeRange(
                     isLive: isLive,
+                    forwardOnly: engine.isForwardOnlySource,
                     sourceTime: engine.sourceTime,
                     currentTime: engine.currentTime,
                     duration: engine.duration
@@ -80,8 +82,8 @@ public final class SoftwarePiPSource {
         return fresh
     }
 
-    /// Playable range on the enqueued frames' PTS axis (source axis). Live sources report an
-    /// indefinite range so the window shows live UI. `.invalid` when the engine is gone: there is
+    /// Playable range on the enqueued frames' PTS axis (source axis). Live and forward-only sources
+    /// report an indefinite range so the window shows live UI. `.invalid` when the engine is gone: there is
     /// no content to describe, which is not the same as a live source.
     /// The read also refreshes the off-main snapshot on purpose.
     public func timeRange() -> CMTimeRange { refreshSnapshot().range }
@@ -123,7 +125,8 @@ public final class SoftwarePiPSource {
 
     /// `skip(by:)` that returns once the seek has settled, for the PiP skip completion handler.
     func skipAndWait(by seconds: Double) async {
-        guard let engine else { return }
+        // A forward-only source has no skip buttons (indefinite range); refuse a stray request too.
+        guard let engine, !engine.isForwardOnlySource else { return }
         let target = Self.skipTarget(isLive: isLive, currentTime: engine.currentTime, duration: engine.duration, by: seconds)
         await engine.seek(to: target)
     }
