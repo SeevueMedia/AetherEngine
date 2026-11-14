@@ -31,6 +31,13 @@ struct SoftwarePiPSourceTests {
         #expect(r.duration == .positiveInfinity)
     }
 
+    @Test("forward-only source: indefinite even with a known duration, so no scrubber or skip")
+    func forwardOnlyIndefinite() {
+        let r = AetherEngine.softwarePiPTimeRange(isLive: false, forwardOnly: true, sourceTime: 40, currentTime: 40, duration: 5400)
+        #expect(r.start == .negativeInfinity)
+        #expect(r.duration == .positiveInfinity)
+    }
+
     @Test("unknown duration falls back to indefinite")
     func unknownDurationIndefinite() {
         let r = AetherEngine.softwarePiPTimeRange(isLive: false, sourceTime: 5, currentTime: 5, duration: 0)

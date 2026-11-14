@@ -116,6 +116,13 @@ public final class AetherEngine: ObservableObject {
     /// Whether the active session accepts a seek. Live playback requires a DVR window;
     /// forward-only VOD never advertises arbitrary seeking even when its duration is known.
     /// Remote HLS uses the native item's measured range instead of container metadata.
+    /// The loaded source plays forward only: a sequential origin, or a source whose open found it
+    /// cannot seek (a forward-only custom `IOReader`). Unlike `canSeek` this does not change with
+    /// the playback state, so the PiP window keeps one shape for the whole session.
+    var isForwardOnlySource: Bool {
+        loadedOptions.sequentialOrigin || isSourceSeekable == false
+    }
+
     public var canSeek: Bool {
         guard isSessionReady else { return false }
         switch state {
@@ -1397,8 +1404,12 @@ public final class AetherEngine: ObservableObject {
     /// SW-PiP: playable range for the sample-buffer PiP UI on the PTS axis of the enqueued frames
     /// (the source axis; sourceTime = currentTime + container start offset). Live or unknown
     /// duration reports indefinite so the window shows live UI instead of a bogus scrubber.
-    nonisolated static func softwarePiPTimeRange(isLive: Bool, sourceTime: Double, currentTime: Double, duration: Double) -> CMTimeRange {
-        guard !isLive, duration.isFinite, duration > 0 else {
+    /// A forward-only source (a custom stream such as a disc title, or a sequential origin) never
+    /// seeks, so it reports indefinite too even when its duration is known: the window then offers
+    /// no scrubber and no skip buttons that would ask it to seek.
+    nonisolated static func softwarePiPTimeRange(isLive: Bool, forwardOnly: Bool = false, sourceTime: Double,
+                                                 currentTime: Double, duration: Double) -> CMTimeRange {
+        guard !isLive, !forwardOnly, duration.isFinite, duration > 0 else {
             return CMTimeRange(start: .negativeInfinity, duration: .positiveInfinity)
         }
         let sourceStart = sourceTime - currentTime
